@@ -19,7 +19,7 @@ export function useLeaderboard(limit = 20): {
     setLoading(true);
     api.leaderboard
       .top(limit)
-      .then((rows) => {
+      .then((rows: LeaderboardEntry[]) => {
         if (mounted) {
           setData(rows);
           setError(null);

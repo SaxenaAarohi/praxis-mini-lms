@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Save, ClipboardList } from 'lucide-react';
 import { api, extractError } from '@/lib/api';
+import type { ArticleListItem } from '@/types/api';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Button } from '@/components/ui/Button';
@@ -38,7 +39,7 @@ export function AdminArticleEditPage(): JSX.Element {
       // We don't have a direct getById endpoint as an admin, but list returns enough by filtering;
       // instead resolve from the list endpoint by id.
       const res = await api.articles.list({ limit: 200 });
-      return res.items.find((x) => x.id === id) ?? null;
+      return res.items.find((x: ArticleListItem) => x.id === id) ?? null;
     },
     enabled: Boolean(id),
   });

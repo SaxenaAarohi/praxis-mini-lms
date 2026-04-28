@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api } from '@/lib/api';
+import type { ArticleListItem } from '@/types/api';
 import { ArticleCard } from '@/components/articles/ArticleCard';
 import { TagFilter } from '@/components/articles/TagFilter';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -81,7 +82,7 @@ export function ArticleListPage(): JSX.Element {
         />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((a) => (
+          {items.map((a: ArticleListItem) => (
             <ArticleCard key={a.id} article={a} />
           ))}
         </div>

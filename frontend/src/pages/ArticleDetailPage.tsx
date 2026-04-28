@@ -107,7 +107,7 @@ export function ArticleDetailPage(): JSX.Element {
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          {article.tags.map((t) => (
+          {article.tags.map((t: string) => (
             <Tag key={t} label={t} />
           ))}
         </div>
@@ -160,7 +160,9 @@ export function ArticleDetailPage(): JSX.Element {
           <AssignmentForm
             assignment={assignmentQuery.data}
             submitting={submitMutation.isPending}
-            onSubmit={(answers) => submitMutation.mutateAsync(answers)}
+            onSubmit={async (answers) => {
+              await submitMutation.mutateAsync(answers);
+            }}
           />
         )}
       </section>

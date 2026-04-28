@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { AdminStats } from '@/types/api';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
 import { fromNow } from '@/lib/format';
@@ -27,7 +28,7 @@ export function AdminUsersPage(): JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {data.recentUsers.map((u) => (
+            {data.recentUsers.map((u: AdminStats['recentUsers'][number]) => (
               <tr key={u.id} className="border-b last:border-b-0 border-slate-100">
                 <td className="px-4 py-3 font-medium">{u.name}</td>
                 <td className="px-4 py-3 text-slate-600">{u.email}</td>

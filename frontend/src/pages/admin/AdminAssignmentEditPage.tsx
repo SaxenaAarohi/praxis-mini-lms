@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/context/ToastContext';
-import type { AdminQuestion, AssignmentAdmin } from '@/types/api';
+import type { AdminQuestion, ArticleListItem, AssignmentAdmin } from '@/types/api';
 
 interface DraftQuestion {
   id?: string;
@@ -64,7 +64,7 @@ export function AdminAssignmentEditPage(): JSX.Element {
     queryKey: ['admin', 'article-by-id', articleId],
     queryFn: async () => {
       const list = await api.articles.list({ limit: 200 });
-      return list.items.find((a) => a.id === articleId) ?? null;
+      return list.items.find((a: ArticleListItem) => a.id === articleId) ?? null;
     },
     enabled: Boolean(articleId),
   });

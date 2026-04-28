@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, ClipboardList } from 'lucide-react';
 import { api, extractError } from '@/lib/api';
+import type { ArticleListItem } from '@/types/api';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/context/ToastContext';
@@ -52,7 +53,7 @@ export function AdminArticlesPage(): JSX.Element {
       ) : (
         <div className="card overflow-hidden">
           <ul className="divide-y divide-slate-100">
-            {data.items.map((a) => (
+            {data.items.map((a: ArticleListItem) => (
               <li key={a.id} className="p-4 flex flex-col md:flex-row md:items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <Link to={`/articles/${a.slug}`} className="font-semibold hover:text-brand-700 truncate block">
@@ -62,7 +63,7 @@ export function AdminArticlesPage(): JSX.Element {
                     {dateLabel(a.createdAt)} · {a.viewCount} views · {a.estimatedReadTime} min
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {a.tags.map((t) => <Tag key={t} label={t} />)}
+                    {a.tags.map((t: string) => <Tag key={t} label={t} />)}
                   </div>
                 </div>
                 <div className="flex gap-2">

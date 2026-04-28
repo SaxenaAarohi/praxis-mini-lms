@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Award, Flame, Star, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
+import type { Submission } from '@/types/api';
 import { Badge } from '@/components/ui/Badge';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -90,7 +91,7 @@ export function ProfilePage(): JSX.Element {
           <EmptyState title="No submissions yet" description="Read an article and try its practice assignment." />
         ) : (
           <ul className="divide-y divide-slate-100">
-            {data.items.map((s) => (
+            {data.items.map((s: Submission) => (
               <li key={s.id} className="py-3 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-semibold shrink-0">
                   {s.percentage.toFixed(0)}

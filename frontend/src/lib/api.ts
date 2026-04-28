@@ -82,6 +82,15 @@ async function unwrap<T>(promise: Promise<{ data: ApiSuccess<T> }>): Promise<T> 
   return res.data.data;
 }
 
+export interface ArticleWriteInput {
+  title: string;
+  content: string;
+  summary?: string;
+  tags: string[];
+  coverImageUrl?: string | null;
+  published?: boolean;
+}
+
 export const api = {
   auth: {
     signup: (input: { name: string; email: string; password: string }) =>
@@ -97,15 +106,8 @@ export const api = {
       unwrap<PageResult<ArticleListItem>>(apiClient.get('/articles', { params })),
     tags: () => unwrap<Array<{ tag: string; count: number }>>(apiClient.get('/articles/tags')),
     getBySlug: (slug: string) => unwrap<Article>(apiClient.get(`/articles/${encodeURIComponent(slug)}`)),
-    create: (input: {
-      title: string;
-      content: string;
-      summary?: string;
-      tags: string[];
-      coverImageUrl?: string | null;
-      published?: boolean;
-    }) => unwrap<Article>(apiClient.post('/articles', input)),
-    update: (id: string, input: Partial<Parameters<typeof api.articles.create>[0]>) =>
+    create: (input: ArticleWriteInput) => unwrap<Article>(apiClient.post('/articles', input)),
+    update: (id: string, input: Partial<ArticleWriteInput>) =>
       unwrap<Article>(apiClient.patch(`/articles/${id}`, input)),
     remove: (id: string) => apiClient.delete(`/articles/${id}`),
     setProgress: (id: string, percent: number) =>

@@ -99,7 +99,7 @@ export function DashboardPage(): JSX.Element {
                 <h3 className="text-sm font-semibold">Badges</h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                {data.gamification.badges.map((b) => (
+                {data.gamification.badges.map((b: string) => (
                   <Badge key={b} tone="amber">
                     {b}
                   </Badge>
