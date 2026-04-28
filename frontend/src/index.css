@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans;
+  }
+
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl border border-slate-200 shadow-sm;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium
+      transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500
+      focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50;
+  }
+
+  .btn-ghost {
+    @apply btn text-slate-700 hover:bg-slate-100;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm
+      placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-slate-200 rounded-xl;
+  }
+
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s linear infinite;
+  }
+
+  .prose-mini {
+    @apply max-w-none text-slate-800;
+  }
+  .prose-mini h1 {
+    @apply text-3xl font-bold mt-8 mb-4 text-slate-900;
+  }
+  .prose-mini h2 {
+    @apply text-2xl font-semibold mt-6 mb-3 text-slate-900;
+  }
+  .prose-mini h3 {
+    @apply text-xl font-semibold mt-5 mb-2 text-slate-900;
+  }
+  .prose-mini p {
+    @apply my-3 leading-relaxed;
+  }
+  .prose-mini ul {
+    @apply list-disc pl-6 my-3 space-y-1;
+  }
+  .prose-mini ol {
+    @apply list-decimal pl-6 my-3 space-y-1;
+  }
+  .prose-mini blockquote {
+    @apply border-l-4 border-brand-300 pl-4 italic text-slate-600 my-4;
+  }
+  .prose-mini code {
+    @apply bg-slate-100 text-brand-800 px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+  .prose-mini pre {
+    @apply bg-slate-900 text-slate-100 rounded-xl p-4 overflow-x-auto my-4;
+  }
+  .prose-mini pre code {
+    @apply bg-transparent text-inherit p-0;
+  }
+  .prose-mini a {
+    @apply text-brand-600 hover:text-brand-700 underline underline-offset-2;
+  }
+  .prose-mini hr {
+    @apply my-6 border-slate-200;
+  }
+  .prose-mini strong {
+    @apply font-semibold text-slate-900;
+  }
+}

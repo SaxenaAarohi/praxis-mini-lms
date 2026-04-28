@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: praxis-mini-lms-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: node dist/server.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-4o-mini
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: OPENROUTER_APP_NAME
+        value: Mini LMS
+      - key: LOG_LEVEL
+        value: info
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: RATE_LIMIT_MAX
+        value: 120
+      # The following are NOT set here so the dashboard prompts for them on first deploy.
+      # CLIENT_ORIGIN  — paste the Vercel deployment URL once it's live
+      # DATABASE_URL   — your MongoDB Atlas connection string
+      # JWT_SECRET     — strong random string (32+ chars)
+      # OPENROUTER_API_KEY — from openrouter.ai/keys
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

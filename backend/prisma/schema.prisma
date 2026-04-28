@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum QuestionType {
+  MCQ
+  SHORT
+}
+
+enum SubmissionStatus {
+  GRADED
+  PENDING
+}
+
+type Gamification {
+  badges          String[]
+  streak          Int       @default(0)
+  lastActivityAt  DateTime?
+  totalPoints     Int       @default(0)
+}
+
+type ReadingProgressEntry {
+  articleId String
+  percent   Int
+}
+
+type UserStats {
+  assignmentsAttempted Int   @default(0)
+  assignmentsPassed    Int   @default(0)
+  avgScore             Float @default(0)
+}
+
+type Question {
+  id           String       @default(uuid())
+  type         QuestionType
+  prompt       String
+  points       Int          @default(10)
+  order        Int          @default(0)
+  options      String[]
+  correctIndex Int?
+  modelAnswer  String?
+  rubric       String?
+  maxWords     Int?
+}
+
+type Answer {
+  questionId    String
+  type          QuestionType
+  mcqIndex      Int?
+  text          String?
+  score         Int
+  pointsAwarded Int
+  feedback      String?
+  isCorrect     Boolean?
+}
+
+model User {
+  id              String                 @id @default(auto()) @map("_id") @db.ObjectId
+  email           String                 @unique
+  name            String
+  passwordHash    String
+  role            Role                   @default(USER)
+  avatarUrl       String?
+  gamification    Gamification
+  readingProgress ReadingProgressEntry[]
+  stats           UserStats
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  articles    Article[]    @relation("AuthoredArticles")
+  submissions Submission[]
+
+  @@index([role, createdAt])
+}
+
+model Article {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  title             String
+  slug              String    @unique
+  content           String
+  summary           String?
+  tags              String[]
+  authorId          String    @db.ObjectId
+  author            User      @relation("AuthoredArticles", fields: [authorId], references: [id])
+  coverImageUrl     String?
+  viewCount         Int       @default(0)
+  estimatedReadTime Int       @default(1)
+  published         Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  assignment  Assignment?
+  submissions Submission[]
+
+  @@index([tags])
+  @@index([published, createdAt])
+}
+
+model Assignment {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  articleId    String     @unique @db.ObjectId
+  article      Article    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  title        String
+  passingScore Int        @default(60)
+  questions    Question[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  submissions Submission[]
+}
+
+model Submission {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String           @db.ObjectId
+  user         User             @relation(fields: [userId], references: [id])
+  articleId    String           @db.ObjectId
+  article      Article          @relation(fields: [articleId], references: [id])
+  assignmentId String           @db.ObjectId
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id])
+  answers      Answer[]
+  totalPoints  Int
+  maxPoints    Int
+  percentage   Float
+  status       SubmissionStatus @default(GRADED)
+  aiUsed       Boolean          @default(false)
+  durationMs   Int?
+  createdAt    DateTime         @default(now())
+
+  @@index([userId, articleId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([articleId, percentage(sort: Desc)])
+}
