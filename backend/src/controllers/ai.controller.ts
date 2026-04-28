@@ -31,18 +31,17 @@ function buildChatPayload(
   return out;
 }
 
-/** POST /api/ai/summarize — get a 120-word summary of an article (cached). */
+/**
+ * POST /api/ai/summarize — generate a 120-word summary of an article.
+ * Caching disabled: every call hits OpenRouter fresh and the result is
+ * NOT persisted onto the article (the `Article.summary` field is left
+ * untouched).
+ */
 export async function summarize(req: Request, res: Response): Promise<void> {
-  const { articleId, refresh } = req.body as { articleId: string; refresh?: boolean };
+  const { articleId } = req.body as { articleId: string; refresh?: boolean };
 
   const article = await prisma.article.findUnique({ where: { id: articleId } });
   if (!article) throw ApiError.notFound('Article not found');
-
-  // Already summarised once and the user didn't ask for a fresh one — return cache.
-  if (article.summary && !refresh) {
-    res.json({ ok: true, data: { summary: article.summary, cached: true } });
-    return;
-  }
 
   const trimmedContent = clip(article.content, AI_LIMITS.contentMaxChars);
 
@@ -72,8 +71,6 @@ export async function summarize(req: Request, res: Response): Promise<void> {
     }
   }
 
-  // Cache the summary on the article so next time we serve it instantly.
-  await prisma.article.update({ where: { id: article.id }, data: { summary } });
   res.json({ ok: true, data: { summary, cached: false } });
 }
 
