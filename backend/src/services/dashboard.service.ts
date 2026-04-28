@@ -31,28 +31,34 @@ export async function getUserDashboard(userId: string) {
         article: { select: { id: true, title: true, slug: true, tags: true } },
       },
     }),
-    prisma.submission.aggregateRaw({
-      pipeline: [
-        { $match: { $expr: { $eq: ['$userId', { $oid: userId }] } } },
-        {
-          $match: {
-            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              year: { $year: '$createdAt' },
-              month: { $month: '$createdAt' },
-              day: { $dayOfMonth: '$createdAt' },
+    (async (): Promise<RawDateBucket[]> => {
+      // MongoDB Extended JSON requires `{ $date: ISO }` for Date comparisons —
+      // a plain `new Date()` would be serialised as a string and never match.
+      const cutoffIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const result = await prisma.submission.aggregateRaw({
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ['$userId', { $oid: userId }] },
+              createdAt: { $gte: { $date: cutoffIso } },
             },
-            avgPercentage: { $avg: '$percentage' },
-            count: { $sum: 1 },
           },
-        },
-        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
-      ],
-    }) as Promise<unknown> as Promise<RawDateBucket[]>,
+          {
+            $group: {
+              _id: {
+                year: { $year: '$createdAt' },
+                month: { $month: '$createdAt' },
+                day: { $dayOfMonth: '$createdAt' },
+              },
+              avgPercentage: { $avg: '$percentage' },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+        ],
+      });
+      return result as unknown as RawDateBucket[];
+    })(),
     prisma.submission.aggregateRaw({
       pipeline: [
         { $match: { $expr: { $eq: ['$userId', { $oid: userId }] } } },
