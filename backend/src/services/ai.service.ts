@@ -204,7 +204,105 @@ export async function chat(messages: Array<{ role: 'user' | 'model'; content: st
     return `(AI is offline in this environment.) Stub response to: "${lastUser.slice(0, 80)}…"`;
   }
 
-  // Cap total payload size to avoid runaway prompt costs.
+  const trimmed = buildChatPayload(messages);
+  try {
+    const text = await callOpenRouter(trimmed, { temperature: 0.7, maxTokens: 800 });
+    return text || 'I was unable to generate a response.';
+  } catch (err) {
+    logger.error({ err }, 'AI chat failed');
+    return 'The AI assistant is temporarily unavailable. Please try again shortly.';
+  }
+}
+
+/**
+ * Token-by-token streaming variant of `chat`. Yields each delta as
+ * OpenRouter sends it (via Server-Sent Events with `stream: true`).
+ * Falls back to a single yield when AI is offline so the caller can
+ * remain a single async-iterator consumer.
+ */
+export async function* chatStream(
+  messages: Array<{ role: 'user' | 'model'; content: string }>,
+): AsyncGenerator<string> {
+  if (!aiEnabled) {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+    yield `(AI is offline in this environment.) Stub response to: "${lastUser.slice(0, 80)}…"`;
+    return;
+  }
+
+  const trimmed = buildChatPayload(messages);
+
+  let response: Response;
+  try {
+    response = await fetch(`${env.OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': env.CLIENT_ORIGIN,
+        'X-Title': env.OPENROUTER_APP_NAME,
+      },
+      body: JSON.stringify({
+        model: env.OPENROUTER_MODEL,
+        messages: trimmed,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 800,
+      }),
+    });
+  } catch (err) {
+    logger.error({ err }, 'AI chatStream connect failed');
+    yield 'The AI assistant is temporarily unavailable. Please try again shortly.';
+    return;
+  }
+
+  if (!response.ok || !response.body) {
+    const text = await response.text().catch(() => '');
+    logger.error({ status: response.status, text: text.slice(0, 300) }, 'AI chatStream HTTP error');
+    yield 'The AI assistant is temporarily unavailable. Please try again shortly.';
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let separatorIdx;
+      // SSE events are terminated by a blank line (\n\n)
+      while ((separatorIdx = buffer.indexOf('\n\n')) >= 0) {
+        const event = buffer.slice(0, separatorIdx);
+        buffer = buffer.slice(separatorIdx + 2);
+
+        for (const line of event.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') return;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+            };
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) yield delta;
+          } catch {
+            // ignore malformed lines (heartbeats, comments, partial chunks)
+          }
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
+}
+
+/** Build the system+user/assistant message array sent to OpenRouter. */
+function buildChatPayload(
+  messages: Array<{ role: 'user' | 'model'; content: string }>,
+): ChatMessage[] {
   let totalChars = 0;
   const trimmed: ChatMessage[] = [{ role: 'system', content: AI_PROMPTS.chatSystem }];
   for (const m of messages) {
@@ -215,14 +313,7 @@ export async function chat(messages: Array<{ role: 'user' | 'model'; content: st
     trimmed.push({ role, content });
     if (totalChars >= AI_LIMITS.chatTotalMaxChars) break;
   }
-
-  try {
-    const text = await callOpenRouter(trimmed, { temperature: 0.7, maxTokens: 800 });
-    return text || 'I was unable to generate a response.';
-  } catch (err) {
-    logger.error({ err }, 'AI chat failed');
-    return 'The AI assistant is temporarily unavailable. Please try again shortly.';
-  }
+  return trimmed;
 }
 
 /**

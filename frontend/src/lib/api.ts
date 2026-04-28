@@ -159,3 +159,73 @@ export const api = {
       unwrap<{ reply: string }>(apiClient.post('/ai/chat', { messages })),
   },
 };
+
+/**
+ * Streams a chat reply token-by-token from `POST /api/ai/chat/stream` (SSE).
+ * Yields each delta as the server emits it; throws on network/HTTP errors.
+ *
+ * Usage:
+ *   for await (const delta of streamChat(messages)) { ... }
+ */
+export async function* streamChat(
+  messages: Array<{ role: 'user' | 'model'; content: string }>,
+  options: { signal?: AbortSignal } = {},
+): AsyncGenerator<string> {
+  const token = storage.getToken();
+  const response = await fetch(`${baseURL}/ai/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ messages }),
+    signal: options.signal,
+  });
+
+  if (response.status === 401) {
+    storage.clear();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Stream failed (${response.status}): ${text.slice(0, 200)}`);
+  }
+  if (!response.body) throw new Error('Server did not return a stream body');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) >= 0) {
+        const event = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+
+        for (const line of event.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') return;
+          try {
+            const parsed = JSON.parse(payload) as { delta?: string; error?: string };
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.delta) yield parsed.delta;
+          } catch (err) {
+            // Re-throw real errors; ignore malformed/heartbeat lines.
+            if (err instanceof Error && err.message && !err.message.startsWith('Unexpected')) {
+              throw err;
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
+}

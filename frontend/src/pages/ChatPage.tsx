@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, User as UserIcon } from 'lucide-react';
-import { api, extractError } from '@/lib/api';
+import { Send, Sparkles, Square, User as UserIcon } from 'lucide-react';
+import { extractError, streamChat } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/context/ToastContext';
@@ -24,27 +24,67 @@ export function ChatPage(): JSX.Element {
   const [sending, setSending] = useState(false);
   const toast = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  // Cancel any in-flight stream when the page unmounts
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   const send = async (text: string) => {
     if (!text.trim() || sending) return;
-    const next: Message[] = [...messages, { role: 'user', content: text.trim() }];
-    setMessages(next);
+    const userMessage: Message = { role: 'user', content: text.trim() };
+    const baseMessages: Message[] = [...messages, userMessage];
+
+    // Append user message + an empty assistant message we'll fill in as tokens arrive.
+    setMessages([...baseMessages, { role: 'model', content: '' }]);
     setInput('');
     setSending(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let receivedAny = false;
     try {
-      const { reply } = await api.ai.chat(next);
-      setMessages([...next, { role: 'model', content: reply }]);
+      for await (const delta of streamChat(baseMessages, { signal: controller.signal })) {
+        receivedAny = true;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!last || last.role !== 'model') return prev;
+          return [...prev.slice(0, -1), { ...last, content: last.content + delta }];
+        });
+      }
+      if (!receivedAny) {
+        // Stream ended without any token — show a friendly placeholder.
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!last || last.role !== 'model' || last.content) return prev;
+          return [...prev.slice(0, -1), { ...last, content: 'No response from the AI tutor.' }];
+        });
+      }
     } catch (err) {
+      // User-initiated abort: keep whatever was streamed; no toast.
+      if ((err as Error).name === 'AbortError') return;
       toast.error('Chat failed', extractError(err).message);
-      setMessages(next.slice(0, -1));
+      // Strip the empty assistant placeholder + restore user input
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === 'model' && !last.content) return prev.slice(0, -1);
+        return prev;
+      });
       setInput(text);
     } finally {
       setSending(false);
+      abortRef.current = null;
     }
+  };
+
+  const stopStreaming = () => {
+    abortRef.current?.abort();
   };
 
   return (
@@ -85,41 +125,48 @@ export function ChatPage(): JSX.Element {
             </div>
           )}
 
-          {messages.map((m, i) => (
-            <div key={i} className={cn('flex gap-3', m.role === 'user' ? 'justify-end' : 'justify-start')}>
-              {m.role === 'model' && (
-                <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-              )}
-              <div
-                className={cn(
-                  'max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
-                  m.role === 'user'
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-slate-100 text-slate-900',
+          {messages.map((m, i) => {
+            const isLast = i === messages.length - 1;
+            const isStreamingThis = sending && isLast && m.role === 'model';
+            const isAwaitingFirstToken = isStreamingThis && !m.content;
+            return (
+              <div key={i} className={cn('flex gap-3', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+                {m.role === 'model' && (
+                  <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
                 )}
-              >
-                {m.content}
-              </div>
-              {m.role === 'user' && (
-                <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                  <UserIcon className="w-4 h-4" />
+                <div
+                  className={cn(
+                    'max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
+                    m.role === 'user'
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-slate-100 text-slate-900',
+                  )}
+                >
+                  {isAwaitingFirstToken ? (
+                    <span className="inline-flex gap-1 items-center text-slate-500 italic">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '120ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: '240ms' }} />
+                    </span>
+                  ) : (
+                    <>
+                      {m.content}
+                      {isStreamingThis && (
+                        <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-400 align-middle animate-pulse" />
+                      )}
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-
-          {sending && (
-            <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center">
-                <Sparkles className="w-4 h-4" />
+                {m.role === 'user' && (
+                  <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                )}
               </div>
-              <div className="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm text-slate-500 italic">
-                Thinking…
-              </div>
-            </div>
-          )}
+            );
+          })}
         </div>
 
         <form
@@ -135,6 +182,7 @@ export function ChatPage(): JSX.Element {
             placeholder="Ask anything…"
             rows={1}
             className="flex-1 min-h-[44px] resize-none"
+            disabled={sending}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -142,9 +190,20 @@ export function ChatPage(): JSX.Element {
               }
             }}
           />
-          <Button type="submit" loading={sending} icon={<Send className="w-4 h-4" />}>
-            Send
-          </Button>
+          {sending ? (
+            <Button
+              type="button"
+              variant="secondary"
+              icon={<Square className="w-4 h-4" />}
+              onClick={stopStreaming}
+            >
+              Stop
+            </Button>
+          ) : (
+            <Button type="submit" icon={<Send className="w-4 h-4" />}>
+              Send
+            </Button>
+          )}
         </form>
       </div>
     </div>

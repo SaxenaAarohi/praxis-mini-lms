@@ -13,5 +13,6 @@ router.use(requireAuth, aiLimiter);
 router.post('/summarize', validate(summarizeSchema), asyncHandler(aiController.summarize));
 router.post('/hint', validate(hintSchema), asyncHandler(aiController.hint));
 router.post('/chat', validate(chatSchema), asyncHandler(aiController.chat));
+router.post('/chat/stream', validate(chatSchema), asyncHandler(aiController.chatStream));
 
 export default router;
