@@ -13,7 +13,7 @@ export const storage = {
     try {
       localStorage.setItem(TOKEN_KEY, token);
     } catch {
-      /* ignore */
+      
     }
   },
   getUser<T = unknown>(): T | null {
@@ -28,7 +28,7 @@ export const storage = {
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(user));
     } catch {
-      /* ignore */
+      
     }
   },
   clear(): void {
@@ -36,7 +36,7 @@ export const storage = {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
     } catch {
-      /* ignore */
+      
     }
   },
 };

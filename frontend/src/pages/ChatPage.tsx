@@ -30,7 +30,6 @@ export function ChatPage(): JSX.Element {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
-  // Cancel any in-flight stream when the page unmounts
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
@@ -40,7 +39,6 @@ export function ChatPage(): JSX.Element {
     const userMessage: Message = { role: 'user', content: text.trim() };
     const baseMessages: Message[] = [...messages, userMessage];
 
-    // Append user message + an empty assistant message we'll fill in as tokens arrive.
     setMessages([...baseMessages, { role: 'model', content: '' }]);
     setInput('');
     setSending(true);
@@ -59,7 +57,7 @@ export function ChatPage(): JSX.Element {
         });
       }
       if (!receivedAny) {
-        // Stream ended without any token — show a friendly placeholder.
+        
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (!last || last.role !== 'model' || last.content) return prev;
@@ -67,10 +65,10 @@ export function ChatPage(): JSX.Element {
         });
       }
     } catch (err) {
-      // User-initiated abort: keep whatever was streamed; no toast.
+      
       if ((err as Error).name === 'AbortError') return;
       toast.error('Chat failed', extractError(err).message);
-      // Strip the empty assistant placeholder + restore user input
+      
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.role === 'model' && !last.content) return prev.slice(0, -1);

@@ -31,7 +31,6 @@ export function AdminArticleEditPage(): JSX.Element {
   const toast = useToast();
   const [preview, setPreview] = useState(false);
 
-  // ---- Loading existing article (when editing) ----
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(!isNew);
 
@@ -41,7 +40,7 @@ export function AdminArticleEditPage(): JSX.Element {
     (async () => {
       try {
         setLoading(true);
-        // No admin getById endpoint — use the list to find the slug, then fetch full article.
+        
         const list = await api.articles.list({ limit: 200 });
         const stub: ArticleListItem | undefined = list.items.find((x) => x.id === id);
         if (!stub || !alive) {
@@ -61,7 +60,6 @@ export function AdminArticleEditPage(): JSX.Element {
     };
   }, [id, isNew]);
 
-  // ---- Form state ----
   const {
     register,
     handleSubmit,
@@ -80,7 +78,6 @@ export function AdminArticleEditPage(): JSX.Element {
     },
   });
 
-  // Hydrate form once we have the article
   useEffect(() => {
     if (article) {
       reset({
@@ -94,7 +91,6 @@ export function AdminArticleEditPage(): JSX.Element {
     }
   }, [article, reset]);
 
-  // ---- Save handler ----
   const [saving, setSaving] = useState(false);
 
   const onSubmit = async (values: FormValues) => {

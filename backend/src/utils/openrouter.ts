@@ -1,17 +1,6 @@
 import { aiEnabled, env } from '../config/env';
 import { logger } from '../config/logger';
 
-/**
- * Tiny wrapper around OpenRouter's chat-completions endpoint.
- * Two functions: one for normal (await full reply), one for streaming
- * (yield each token as it arrives). Used by ai.controller for the
- * summary/hint/chat features and by submission.controller for
- * AI-graded short answers.
- *
- * If OPENROUTER_API_KEY isn't set, every call returns a friendly
- * fallback string so dev environments still work without a real key.
- */
-
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -26,12 +15,10 @@ export interface CallOptions {
 
 export const isAiEnabled = aiEnabled;
 
-/** Truncate a string to `max` characters (no ellipsis added). */
 export function clip(value: string, max: number): string {
   return value.length <= max ? value : value.slice(0, max);
 }
 
-/** Send messages to OpenRouter and return the full reply text. */
 export async function callOpenRouter(
   messages: ChatMessage[],
   options: CallOptions = {},
@@ -67,7 +54,6 @@ export async function callOpenRouter(
   return data.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
-/** Stream tokens from OpenRouter one delta at a time. */
 export async function* callOpenRouterStream(
   messages: ChatMessage[],
   options: CallOptions = {},
@@ -115,7 +101,6 @@ export async function* callOpenRouterStream(
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE events end with a blank line (\n\n)
       let separatorIdx;
       while ((separatorIdx = buffer.indexOf('\n\n')) >= 0) {
         const event = buffer.slice(0, separatorIdx);
@@ -132,12 +117,12 @@ export async function* callOpenRouterStream(
             const delta = parsed.choices?.[0]?.delta?.content;
             if (delta) yield delta;
           } catch {
-            // ignore heartbeats / partial chunks
+            
           }
         }
       }
     }
   } finally {
-    try { reader.releaseLock(); } catch { /* ignore */ }
+    try { reader.releaseLock(); } catch {  }
   }
 }

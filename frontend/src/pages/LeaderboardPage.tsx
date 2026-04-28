@@ -12,11 +12,9 @@ import { cn } from '@/utils/cn';
 export function LeaderboardPage(): JSX.Element {
   const { user } = useAuth();
 
-  // Top-N list — refreshed in real time by the useLeaderboard hook
-  // (REST initial fetch + Socket.io live updates).
+  
   const { data, loading, error, live } = useLeaderboard(20);
 
-  // Current user's rank — separate one-shot fetch on mount.
   const [rank, setRank] = useState<RankInfo | null>(null);
 
   useEffect(() => {

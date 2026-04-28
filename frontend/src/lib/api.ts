@@ -160,13 +160,6 @@ export const api = {
   },
 };
 
-/**
- * Streams a chat reply token-by-token from `POST /api/ai/chat/stream` (SSE).
- * Yields each delta as the server emits it; throws on network/HTTP errors.
- *
- * Usage:
- *   for await (const delta of streamChat(messages)) { ... }
- */
 export async function* streamChat(
   messages: Array<{ role: 'user' | 'model'; content: string }>,
   options: { signal?: AbortSignal } = {},
@@ -217,7 +210,7 @@ export async function* streamChat(
             if (parsed.error) throw new Error(parsed.error);
             if (parsed.delta) yield parsed.delta;
           } catch (err) {
-            // Re-throw real errors; ignore malformed/heartbeat lines.
+            
             if (err instanceof Error && err.message && !err.message.startsWith('Unexpected')) {
               throw err;
             }
@@ -226,6 +219,6 @@ export async function* streamChat(
       }
     }
   } finally {
-    try { reader.releaseLock(); } catch { /* ignore */ }
+    try { reader.releaseLock(); } catch {  }
   }
 }

@@ -11,10 +11,6 @@ import {
   isAiEnabled,
 } from '../utils/openrouter';
 
-/**
- * Build the messages array we send to OpenRouter for a chat session.
- * Caps total payload size so a long conversation can't run away with cost.
- */
 function buildChatPayload(
   messages: Array<{ role: 'user' | 'model'; content: string }>,
 ): ChatMessage[] {
@@ -31,12 +27,6 @@ function buildChatPayload(
   return out;
 }
 
-/**
- * POST /api/ai/summarize — generate a 120-word summary of an article.
- * Caching disabled: every call hits OpenRouter fresh and the result is
- * NOT persisted onto the article (the `Article.summary` field is left
- * untouched).
- */
 export async function summarize(req: Request, res: Response): Promise<void> {
   const { articleId } = req.body as { articleId: string; refresh?: boolean };
 
@@ -47,7 +37,7 @@ export async function summarize(req: Request, res: Response): Promise<void> {
 
   let summary: string;
   if (!isAiEnabled) {
-    // Stub fallback: take the first 4 sentences as bullet points.
+    
     const sentences = trimmedContent
       .replace(/\s+/g, ' ')
       .split(/(?<=[.!?])\s+/)
@@ -74,7 +64,6 @@ export async function summarize(req: Request, res: Response): Promise<void> {
   res.json({ ok: true, data: { summary, cached: false } });
 }
 
-/** POST /api/ai/hint — Socratic nudge for a short-answer question. */
 export async function hint(req: Request, res: Response): Promise<void> {
   const { articleId, questionId, draft } = req.body as {
     articleId: string;
@@ -88,9 +77,8 @@ export async function hint(req: Request, res: Response): Promise<void> {
   const question = assignment.questions.find((q) => q.id === questionId);
   if (!question) throw ApiError.notFound('Question not found');
 
-  // Pick whichever internal answer reference we have (model answer for SHORT,
-  // correct option for MCQ). NEVER returned to the user; only used to steer
-  // the AI's hint.
+  
+  
   const internalRef =
     question.modelAnswer ??
     (question.correctIndex != null ? question.options[question.correctIndex] : undefined);
@@ -131,7 +119,6 @@ export async function hint(req: Request, res: Response): Promise<void> {
   res.json({ ok: true, data: { hint: text } });
 }
 
-/** POST /api/ai/chat — non-streaming chat reply (kept for backwards compat). */
 export async function chat(req: Request, res: Response): Promise<void> {
   const { messages } = req.body as {
     messages: Array<{ role: 'user' | 'model'; content: string }>;
@@ -157,32 +144,25 @@ export async function chat(req: Request, res: Response): Promise<void> {
   res.json({ ok: true, data: { reply } });
 }
 
-/**
- * POST /api/ai/chat/stream — Server-Sent Events stream of chat tokens.
- * Each event is `data: {"delta": "<token>"}\n\n`, then `data: [DONE]\n\n`.
- */
 export async function chatStream(req: Request, res: Response): Promise<void> {
   const { messages } = req.body as {
     messages: Array<{ role: 'user' | 'model'; content: string }>;
   };
 
-  // Open the stream — set SSE headers and flush them so the browser knows
-  // we're going to push events as they arrive.
+  
   res.status(200);
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // disable proxy buffering on Render/nginx
+  res.setHeader('X-Accel-Buffering', 'no'); 
   res.flushHeaders();
   res.write(': stream open\n\n');
 
-  // Stop sending if the user navigated away.
   let aborted = false;
   req.on('close', () => {
     aborted = true;
   });
 
-  // Stub branch: yield one fake delta and end.
   if (!isAiEnabled) {
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
     res.write(

@@ -25,7 +25,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     const payload = verifyAccessToken(header.slice(7).trim());
     req.user = { id: payload.sub, email: payload.email, role: payload.role };
   } catch {
-    // ignore — anonymous request
+    
   }
   next();
 }

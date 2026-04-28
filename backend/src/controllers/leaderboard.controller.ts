@@ -3,11 +3,6 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/ApiError';
 
-/**
- * Each row of the leaderboard.
- * `compositeScore = avgScore * 0.7 + completionRate * 0.3` — this is what
- * the leaderboard sorts by.
- */
 export interface LeaderboardEntry {
   userId: string;
   name: string;
@@ -33,17 +28,9 @@ interface RawRow {
 const oidToString = (v: { $oid: string } | string): string =>
   typeof v === 'string' ? v : v.$oid;
 
-/**
- * Run the leaderboard aggregation pipeline.
- * Exported so submission.controller can call it after a new submission
- * (to broadcast the fresh top-N over Socket.io).
- *
- * `limit = 0` means "no limit, return everyone" — used by myRank().
- */
 export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntry[]> {
   const pipeline: unknown[] = [
-    // 1. Sort newest-first per (user, article) and keep only the latest
-    //    submission for each pair, so retries don't double-count.
+
     { $sort: { userId: 1, articleId: 1, createdAt: -1 } },
     {
       $group: {
@@ -53,7 +40,6 @@ export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntr
     },
     { $replaceRoot: { newRoot: '$latest' } },
 
-    // 2. Group by user: average score + how many distinct articles they've done.
     {
       $group: {
         _id: '$userId',
@@ -63,7 +49,6 @@ export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntr
       },
     },
 
-    // 3. Look up how many published articles exist (for completion %).
     {
       $lookup: {
         from: 'Article',
@@ -77,7 +62,6 @@ export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntr
       },
     },
 
-    // 4. Completion rate = (articles attempted / total articles) * 100
     {
       $addFields: {
         completionRate: {
@@ -95,7 +79,6 @@ export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntr
       },
     },
 
-    // 5. Composite score = 70% avg accuracy + 30% completion
     {
       $addFields: {
         compositeScore: {
@@ -111,7 +94,6 @@ export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntr
 
   if (limit > 0) pipeline.push({ $limit: limit });
 
-  // 6. Look up user details for display.
   pipeline.push(
     { $lookup: { from: 'User', localField: '_id', foreignField: '_id', as: 'user' } },
     { $unwind: '$user' },
@@ -145,21 +127,15 @@ export async function computeLeaderboardTop(limit = 20): Promise<LeaderboardEntr
   }));
 }
 
-/** GET /api/leaderboard — top N entries. */
 export async function top(req: Request, res: Response): Promise<void> {
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
   const data = await computeLeaderboardTop(limit);
   res.json({ ok: true, data });
 }
 
-/**
- * GET /api/leaderboard/me/rank — current user's rank + the people just
- * above and below them (for "you and your neighbours" UI bits).
- */
 export async function myRank(req: Request, res: Response): Promise<void> {
   if (!req.user) throw ApiError.unauthorized();
 
-  // No limit — we need the full ranked list to find this user's position.
   const all = await computeLeaderboardTop(0);
   const total = all.length;
   const idx = all.findIndex((e) => e.userId === req.user!.id);

@@ -24,6 +24,6 @@ export function emitLeaderboardUpdated(payload: unknown): void {
   try {
     getIO().to(LEADERBOARD_ROOM).emit('leaderboard:updated', payload);
   } catch {
-    // Socket not initialised yet (e.g., during seed) — ignore.
+    
   }
 }

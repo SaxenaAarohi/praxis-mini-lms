@@ -13,13 +13,11 @@ export function ArticleListPage(): JSX.Element {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
 
-  // Debounce the search input by 300ms.
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQ(searchInput.trim()), 300);
     return () => window.clearTimeout(id);
   }, [searchInput]);
 
-  // ---- Tags list (loaded once on mount) ----
   const [tags, setTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
 
@@ -41,7 +39,6 @@ export function ArticleListPage(): JSX.Element {
     };
   }, []);
 
-  // ---- Articles list (re-runs when filter changes) ----
   const [items, setItems] = useState<ArticleListItem[]>([]);
   const [articlesLoading, setArticlesLoading] = useState(true);
   const [articlesError, setArticlesError] = useState<string | null>(null);

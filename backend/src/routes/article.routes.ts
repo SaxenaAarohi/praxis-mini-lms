@@ -36,7 +36,6 @@ router.post(
   asyncHandler(articleController.setProgress),
 );
 
-// Nested: /api/articles/:articleId/assignment
 router.use('/:articleId/assignment', assignmentForArticleRoutes);
 
 export default router;

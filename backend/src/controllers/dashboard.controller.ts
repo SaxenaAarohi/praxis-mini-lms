@@ -14,30 +14,25 @@ interface RawTagBucket {
   submissions: number;
 }
 
-/** GET /api/dashboard/me — totals + recent activity + chart series for the user. */
 export async function me(req: Request, res: Response): Promise<void> {
   if (!req.user) throw ApiError.unauthorized();
   const userId = req.user.id;
 
-  // 1. Make sure the user exists (also gives us gamification + stats blobs).
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw ApiError.notFound('User not found');
 
-  // ISO timestamp 30 days ago — used to limit the score-over-time chart.
-  // Wrapped in `{ $date: ... }` extended JSON so MongoDB treats it as a Date,
-  // not a plain string (otherwise the comparison never matches).
+  
+  
   const cutoffIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // 2. Run the four reads in parallel.
   const [aggregate, recentActivity, scoreOverTimeRaw, tagBreakdownRaw] = await Promise.all([
-    // a. Counts + avg %
+    
     prisma.submission.aggregate({
       where: { userId },
       _count: { _all: true },
       _avg: { percentage: true },
     }),
 
-    // b. Last 10 submissions for the activity feed
     prisma.submission.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -47,7 +42,6 @@ export async function me(req: Request, res: Response): Promise<void> {
       },
     }),
 
-    // c. Score-over-time: bucket by day for last 30 days
     prisma.submission.aggregateRaw({
       pipeline: [
         {
@@ -71,7 +65,6 @@ export async function me(req: Request, res: Response): Promise<void> {
       ],
     }) as Promise<unknown> as Promise<RawDateBucket[]>,
 
-    // d. Tag breakdown: avg score per article tag
     prisma.submission.aggregateRaw({
       pipeline: [
         { $match: { $expr: { $eq: ['$userId', { $oid: userId }] } } },
@@ -97,8 +90,7 @@ export async function me(req: Request, res: Response): Promise<void> {
     }) as Promise<unknown> as Promise<RawTagBucket[]>,
   ]);
 
-  // 3. Two extra small reads (could be folded into the main aggregate but
-  //    keeping them separate makes the code easier to read).
+  
   const passedCount = await prisma.submission.count({
     where: { userId, percentage: { gte: 60 } },
   });
@@ -108,7 +100,6 @@ export async function me(req: Request, res: Response): Promise<void> {
     select: { articleId: true },
   });
 
-  // 4. Reshape the raw aggregation rows into clean DTOs for the frontend.
   const scoreOverTime = scoreOverTimeRaw.map((b) => ({
     date: new Date(Date.UTC(b._id.year, b._id.month - 1, b._id.day)).toISOString().slice(0, 10),
     avgPercentage: Math.round(b.avgPercentage * 10) / 10,
@@ -139,9 +130,8 @@ export async function me(req: Request, res: Response): Promise<void> {
   });
 }
 
-/** GET /api/dashboard/admin — platform-wide stats for the admin home. */
 export async function admin(_req: Request, res: Response): Promise<void> {
-  // 1. Run all the platform reads in parallel.
+  
   const [users, articles, submissions, topArticles, recentUsers, recentSubmissions] =
     await Promise.all([
       prisma.user.count(),
@@ -168,7 +158,6 @@ export async function admin(_req: Request, res: Response): Promise<void> {
       }),
     ]);
 
-  // 2. Hydrate top-articles with title/slug for the UI.
   const articleIds = topArticles.map((t) => t.articleId);
   const articleData = await prisma.article.findMany({
     where: { id: { in: articleIds } },

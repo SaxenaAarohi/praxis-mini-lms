@@ -15,12 +15,10 @@ export function AdminArticlesPage(): JSX.Element {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // ---- Article list ----
   const [items, setItems] = useState<ArticleListItem[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Reusable loader so we can call it again after a delete.
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -36,7 +34,6 @@ export function AdminArticlesPage(): JSX.Element {
     void load();
   }, [load]);
 
-  // ---- Delete handler ----
   const handleDelete = async () => {
     if (!confirmId) return;
     setDeleting(true);

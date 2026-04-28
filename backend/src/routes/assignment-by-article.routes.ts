@@ -6,7 +6,6 @@ import { requireAdmin } from '../middleware/role.middleware';
 import { upsertAssignmentSchema } from '../validators/assignment.validator';
 import { asyncHandler } from '../utils/asyncHandler';
 
-// mounted at /api/articles/:articleId/assignment with mergeParams
 const router = Router({ mergeParams: true });
 
 router.get('/', requireAuth, asyncHandler(assignmentController.getForArticle));

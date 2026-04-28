@@ -11,7 +11,7 @@ interface Props {
 export function LeaderboardTable({ entries, highlightUserId }: Props): JSX.Element {
   return (
     <>
-      {/* Desktop / tablet */}
+      {}
       <div className="hidden md:block card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
@@ -54,7 +54,7 @@ export function LeaderboardTable({ entries, highlightUserId }: Props): JSX.Eleme
         </table>
       </div>
 
-      {/* Mobile cards */}
+      {}
       <div className="md:hidden space-y-2">
         {entries.map((e, i) => (
           <div

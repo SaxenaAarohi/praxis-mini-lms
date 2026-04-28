@@ -17,10 +17,6 @@ import { AI_LIMITS, AI_PROMPTS } from '../utils/ai-prompts';
 import { computeLeaderboardTop } from './leaderboard.controller';
 import { emitLeaderboardUpdated } from '../sockets/leaderboard.socket';
 
-/* ------------------------------------------------------------------ */
-/*  Helpers — kept right next to the create() handler that uses them   */
-/* ------------------------------------------------------------------ */
-
 const BADGES = {
   FIRST_SUBMISSION: 'first-submission',
   PERFECT_SCORE: 'perfect-score',
@@ -43,7 +39,6 @@ function isYesterday(prev: Date, today: Date): boolean {
   return today.getTime() - prev.getTime() < oneDayMs * 2 && !isSameUtcDay(prev, today);
 }
 
-/** Count how many distinct article tags this user has submitted across. */
 async function countDistinctTagsForUser(userId: string): Promise<number> {
   const rows = (await prisma.submission.aggregateRaw({
     pipeline: [
@@ -65,12 +60,6 @@ async function countDistinctTagsForUser(userId: string): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
-/**
- * Ask OpenRouter to grade a short-answer response.
- * Returns { score 0-100, feedback }. Falls back to a deterministic
- * stub if OpenRouter isn't configured, or to a "pending review"
- * message if the AI call errors out.
- */
 async function evaluateShortAnswer(input: {
   question: string;
   modelAnswer: string;
@@ -78,7 +67,7 @@ async function evaluateShortAnswer(input: {
   userAnswer: string;
 }): Promise<{ score: number; feedback: string }> {
   if (!isAiEnabled) {
-    // Simple keyword overlap as a stand-in score
+    
     const a = input.userAnswer.toLowerCase();
     const m = input.modelAnswer.toLowerCase();
     const tokens = m.split(/\W+/).filter((t) => t.length > 4).slice(0, 12);
@@ -116,7 +105,6 @@ async function evaluateShortAnswer(input: {
       { temperature: 0.2, jsonMode: true, maxTokens: 400 },
     );
 
-    // Defensive parse: some models wrap JSON in fences or add stray text.
     const parsed = parseJsonLoose(text) as { score?: unknown; feedback?: unknown } | null;
     if (!parsed) throw new Error('AI did not return valid JSON');
 
@@ -134,35 +122,21 @@ async function evaluateShortAnswer(input: {
 
 function parseJsonLoose(text: string): unknown {
   if (!text) return null;
-  try { return JSON.parse(text); } catch { /* try fallbacks */ }
+  try { return JSON.parse(text); } catch {  }
 
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced) {
-    try { return JSON.parse(fenced[1]); } catch { /* keep falling through */ }
+    try { return JSON.parse(fenced[1]); } catch {  }
   }
 
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start !== -1 && end > start) {
-    try { return JSON.parse(text.slice(start, end + 1)); } catch { /* give up */ }
+    try { return JSON.parse(text.slice(start, end + 1)); } catch {  }
   }
   return null;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Handlers                                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * POST /api/submissions — grade an attempt and save it.
- * Steps:
- *   1. Load the assignment (with answer keys).
- *   2. Grade each answer: MCQ → exact match; SHORT → ask AI.
- *   3. Save the submission.
- *   4. Mark the article as completed if user passed.
- *   5. Update gamification (streak, badges, totals).
- *   6. Recompute leaderboard top-20 and broadcast over Socket.io.
- */
 export async function create(req: Request, res: Response): Promise<void> {
   if (!req.user) throw ApiError.unauthorized();
   const userId = req.user.id;
@@ -177,7 +151,6 @@ export async function create(req: Request, res: Response): Promise<void> {
     }>;
   };
 
-  // Step 1 — load the assignment for this article.
   const assignment = await prisma.assignment.findUnique({
     where: { articleId: input.articleId },
   });
@@ -187,7 +160,6 @@ export async function create(req: Request, res: Response): Promise<void> {
   let aiUsed = false;
   let aiAvailable = true;
 
-  // Step 2 — grade each answer.
   const gradedAnswers: Answer[] = [];
   for (const ans of input.answers) {
     const q = questionMap.get(ans.questionId);
@@ -210,7 +182,7 @@ export async function create(req: Request, res: Response): Promise<void> {
         isCorrect: correct,
       });
     } else {
-      // Short answer — AI grade
+      
       aiUsed = true;
       const userText = ans.text as string;
       const evalResult = await evaluateShortAnswer({
@@ -220,8 +192,7 @@ export async function create(req: Request, res: Response): Promise<void> {
         userAnswer: userText,
       });
 
-      // If we got the AI's "unavailable" fallback, mark the submission
-      // as PENDING so we know to re-grade later.
+      
       if (/unavailable|pending review/i.test(evalResult.feedback) && evalResult.score === 0) {
         aiAvailable = false;
       }
@@ -243,7 +214,6 @@ export async function create(req: Request, res: Response): Promise<void> {
   const maxPoints = assignment.questions.reduce((s, q) => s + q.points, 0);
   const percentage = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 1000) / 10 : 0;
 
-  // Step 3 — persist the submission.
   const submission = await prisma.submission.create({
     data: {
       userId,
@@ -259,21 +229,18 @@ export async function create(req: Request, res: Response): Promise<void> {
     },
   });
 
-  // Step 4 — mark article complete if the user passed.
   if (percentage >= assignment.passingScore) {
     await markArticleComplete(userId, assignment.articleId).catch((err) =>
       logger.warn({ err }, 'failed to mark article complete'),
     );
   }
 
-  // Step 5 — gamification: streak, badges, totals.
   const user = await prisma.user.findUnique({ where: { id: userId } });
   let newBadges: string[] = [];
   if (user) {
     newBadges = await applySubmissionEffects(user, submission);
   }
 
-  // Step 6 — refresh leaderboard + broadcast (background, non-blocking).
   void computeLeaderboardTop(20)
     .then((top) => emitLeaderboardUpdated({ top }))
     .catch((err) => logger.warn({ err }, 'leaderboard emit failed'));
@@ -281,7 +248,6 @@ export async function create(req: Request, res: Response): Promise<void> {
   res.status(201).json({ ok: true, data: { submission, meta: { newBadges } } });
 }
 
-/** Set readingProgress to 100% for this article (called after a passing submission). */
 async function markArticleComplete(userId: string, articleId: string): Promise<void> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return;
@@ -292,27 +258,20 @@ async function markArticleComplete(userId: string, articleId: string): Promise<v
   await prisma.user.update({ where: { id: userId }, data: { readingProgress: updated } });
 }
 
-/**
- * Update the user's streak / badges / stats after a submission.
- * Returns the badges that were newly unlocked (so the frontend can
- * show a "🎖 New badge!" toast).
- */
 async function applySubmissionEffects(user: User, submission: Submission): Promise<string[]> {
   const now = new Date();
   const last = user.gamification.lastActivityAt;
 
-  // Streak: if last activity was today → no change; yesterday → +1; otherwise reset to 1.
   let streak = user.gamification.streak;
   if (!last) streak = 1;
   else if (isSameUtcDay(last, now)) {
-    /* same day, keep streak */
+    
   } else if (isYesterday(last, now)) {
     streak += 1;
   } else {
     streak = 1;
   }
 
-  // Award badges (idempotent — Set dedupes).
   const existingBadges = new Set(user.gamification.badges);
   const newBadges: string[] = [];
   const tryAdd = (b: string) => {
@@ -330,7 +289,6 @@ async function applySubmissionEffects(user: User, submission: Submission): Promi
   const distinctTags = await countDistinctTagsForUser(user.id);
   if (distinctTags >= 5) tryAdd(BADGES.POLYGLOT);
 
-  // Recompute denormalised stats from full history (small N, this is fine).
   const allSubs = await prisma.submission.findMany({
     where: { userId: user.id },
     select: { percentage: true },
@@ -360,7 +318,6 @@ async function applySubmissionEffects(user: User, submission: Submission): Promi
   return newBadges;
 }
 
-/** GET /api/submissions/me — paginated list of the user's submissions. */
 export async function listMine(req: Request, res: Response): Promise<void> {
   if (!req.user) throw ApiError.unauthorized();
   const { page, limit, skip } = parsePaging(req.query as { page?: string; limit?: string });
@@ -382,7 +339,6 @@ export async function listMine(req: Request, res: Response): Promise<void> {
   });
 }
 
-/** GET /api/submissions/me/article/:articleId — newest submission for one article. */
 export async function getMyLatestForArticle(req: Request, res: Response): Promise<void> {
   if (!req.user) throw ApiError.unauthorized();
   const submission = await prisma.submission.findFirst({
@@ -392,7 +348,6 @@ export async function getMyLatestForArticle(req: Request, res: Response): Promis
   res.json({ ok: true, data: submission });
 }
 
-/** GET /api/submissions/:id — owner or admin only. */
 export async function getOne(req: Request, res: Response): Promise<void> {
   if (!req.user) throw ApiError.unauthorized();
   const submission = await prisma.submission.findUnique({
@@ -407,7 +362,6 @@ export async function getOne(req: Request, res: Response): Promise<void> {
   res.json({ ok: true, data: submission });
 }
 
-/** GET /api/submissions/admin/recent — last 30 submissions across the platform. */
 export async function adminRecent(_req: Request, res: Response): Promise<void> {
   const items = await prisma.submission.findMany({
     orderBy: { createdAt: 'desc' },

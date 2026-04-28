@@ -58,7 +58,6 @@ export function AdminAssignmentEditPage(): JSX.Element {
   const [passingScore, setPassingScore] = useState(60);
   const [draft, setDraft] = useState<DraftQuestion[]>([]);
 
-  // ---- Load article + assignment chain ----
   const [articleTitle, setArticleTitle] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,16 +69,14 @@ export function AdminAssignmentEditPage(): JSX.Element {
       try {
         setLoading(true);
 
-        // 1. Find the article (so we can show its title in the header).
         const list = await api.articles.list({ limit: 200 });
         const article: ArticleListItem | undefined = list.items.find((a) => a.id === articleId);
         if (alive) setArticleTitle(article?.title ?? null);
 
-        // 2. Check if a learner-facing assignment already exists for this article.
         const publicAssignment = await api.assignments.getForArticle(articleId);
 
         if (publicAssignment?.id) {
-          // 3. Fetch the admin (full, with answer keys) version and hydrate the form.
+          
           const admin: AssignmentAdmin = await api.assignments.getAdmin(publicAssignment.id);
           if (alive) {
             setTitle(admin.title);
@@ -87,7 +84,7 @@ export function AdminAssignmentEditPage(): JSX.Element {
             setDraft(admin.questions.map(fromAdminQuestion));
           }
         } else if (alive) {
-          // No assignment yet — pre-fill with a sensible default title.
+          
           setTitle(`${article?.title ?? ''} – Practice`);
           setDraft([]);
         }
@@ -102,7 +99,6 @@ export function AdminAssignmentEditPage(): JSX.Element {
     };
   }, [articleId, toast]);
 
-  // ---- Save handler ----
   const handleSave = async () => {
     if (!articleId) return;
     setSaving(true);

@@ -17,7 +17,6 @@ async function bootstrap(): Promise<void> {
 
   const app: Application = express();
 
-  // Global middleware
   app.use(
     cors({
       origin: env.CLIENT_ORIGIN,
@@ -28,23 +27,18 @@ async function bootstrap(): Promise<void> {
   app.use(express.json({ limit: '1mb' }));
   app.use(requestId);
 
-  // API routes (rate-limited)
   app.use('/api', generalLimiter);
   app.use('/api', routes);
 
-  // 404 + central error handler (must be last)
   app.use(notFound);
   app.use(errorHandler);
 
-  // Start listening — app.listen() returns the underlying http.Server
   const server = app.listen(env.PORT, () => {
     logger.info(`🚀 mini-lms backend listening on http://localhost:${env.PORT}`);
   });
 
-  // Socket.io attaches to the same http.Server so HTTP + WebSocket share one port
   initSocket(server);
 
-  // Defensive logging only — no graceful shutdown handlers
   process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandledRejection'));
   process.on('uncaughtException', (err) => logger.error({ err }, 'uncaughtException'));
 }

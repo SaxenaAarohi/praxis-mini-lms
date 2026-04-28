@@ -30,7 +30,6 @@ interface UpsertInput {
   >;
 }
 
-/** Convert validated question input → the shape stored in MongoDB. */
 function normalizeQuestions(input: UpsertInput['questions']): Question[] {
   return input.map((q, idx) => {
     const id = q.id || randomUUID();
@@ -64,7 +63,6 @@ function normalizeQuestions(input: UpsertInput['questions']): Question[] {
   });
 }
 
-/** GET /api/articles/:articleId/assignment — answer keys stripped. */
 export async function getForArticle(req: Request, res: Response): Promise<void> {
   const articleId = req.params.articleId;
   const assignment = await prisma.assignment.findUnique({
@@ -76,7 +74,6 @@ export async function getForArticle(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Don't leak correct answers / model answers / rubric to the learner.
   const safeQuestions = assignment.questions
     .slice()
     .sort((a, b) => a.order - b.order)
@@ -93,18 +90,15 @@ export async function getForArticle(req: Request, res: Response): Promise<void> 
   res.json({ ok: true, data: { ...assignment, questions: safeQuestions } });
 }
 
-/** POST /api/articles/:articleId/assignment — admin upsert. */
 export async function upsertForArticle(req: Request, res: Response): Promise<void> {
   const articleId = req.params.articleId;
   const input = req.body as UpsertInput;
 
-  // Make sure the article exists before attaching an assignment to it.
   const article = await prisma.article.findUnique({ where: { id: articleId } });
   if (!article) throw ApiError.notFound('Article not found');
 
   const questions = normalizeQuestions(input.questions);
 
-  // Update if there's already an assignment for this article, else create.
   const existing = await prisma.assignment.findUnique({ where: { articleId } });
   const saved = existing
     ? await prisma.assignment.update({
@@ -127,7 +121,6 @@ export async function upsertForArticle(req: Request, res: Response): Promise<voi
   res.status(201).json({ ok: true, data: saved });
 }
 
-/** GET /api/assignments/:id/admin — admin-only, returns full data with answers. */
 export async function getAdmin(req: Request, res: Response): Promise<void> {
   const assignment = await prisma.assignment.findUnique({
     where: { id: req.params.id },
@@ -137,7 +130,6 @@ export async function getAdmin(req: Request, res: Response): Promise<void> {
   res.json({ ok: true, data: assignment });
 }
 
-/** PATCH /api/assignments/:id — admin update (same shape as upsert). */
 export async function update(req: Request, res: Response): Promise<void> {
   const existing = await prisma.assignment.findUnique({ where: { id: req.params.id } });
   if (!existing) throw ApiError.notFound('Assignment not found');
@@ -157,7 +149,6 @@ export async function update(req: Request, res: Response): Promise<void> {
   res.json({ ok: true, data: updated });
 }
 
-/** DELETE /api/assignments/:id — admin remove. */
 export async function remove(req: Request, res: Response): Promise<void> {
   const existing = await prisma.assignment.findUnique({ where: { id: req.params.id } });
   if (!existing) throw ApiError.notFound('Assignment not found');

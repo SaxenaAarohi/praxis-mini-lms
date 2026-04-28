@@ -20,7 +20,6 @@ export function ArticleDetailPage(): JSX.Element {
   const { slug } = useParams<{ slug: string }>();
   const toast = useToast();
 
-  // ---- Article ----
   const [article, setArticle] = useState<Article | null>(null);
   const [articleLoading, setArticleLoading] = useState(true);
   const [articleError, setArticleError] = useState<string | null>(null);
@@ -49,7 +48,6 @@ export function ArticleDetailPage(): JSX.Element {
 
   const articleId = article?.id ?? null;
 
-  // ---- Assignment (loads after we have the article id) ----
   const [assignment, setAssignment] = useState<AssignmentPublic | null>(null);
   const [assignmentLoading, setAssignmentLoading] = useState(true);
 
@@ -72,7 +70,6 @@ export function ArticleDetailPage(): JSX.Element {
     };
   }, [articleId]);
 
-  // ---- Latest existing submission (so we can show the past result) ----
   const [resultData, setResultData] = useState<{
     submission: Submission;
     newBadges: string[];
@@ -86,7 +83,7 @@ export function ArticleDetailPage(): JSX.Element {
         const last = await api.submissions.latestForArticle(articleId);
         if (alive && last) setResultData({ submission: last, newBadges: [] });
       } catch {
-        // Ignore — no past submission is fine.
+        
       }
     })();
     return () => {
@@ -94,13 +91,11 @@ export function ArticleDetailPage(): JSX.Element {
     };
   }, [articleId]);
 
-  // ---- Reading progress (custom hook, scroll-based + debounced persist) ----
   const { percent: readPercent, ref: contentRef } = useReadingProgress(
     articleId,
     article?.readingProgress ?? 0,
   );
 
-  // ---- Submit handler ----
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (answers: SubmittedAnswer[]) => {

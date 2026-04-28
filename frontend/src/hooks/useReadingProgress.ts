@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 
-/**
- * Tracks scroll-based reading progress within a container element. Persists the
- * percentage to the backend at most once per `persistDelayMs`.
- */
 export function useReadingProgress(
   articleId: string | null,
   initial = 0,
