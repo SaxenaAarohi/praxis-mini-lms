@@ -22,11 +22,7 @@ export async function me(req: Request, res: Response): Promise<void> {
   if (!user) throw ApiError.notFound('User not found');
 
   
-  
-  const cutoffIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
   const [aggregate, recentActivity, scoreOverTimeRaw, tagBreakdownRaw] = await Promise.all([
-    
     prisma.submission.aggregate({
       where: { userId },
       _count: { _all: true },
@@ -44,12 +40,7 @@ export async function me(req: Request, res: Response): Promise<void> {
 
     prisma.submission.aggregateRaw({
       pipeline: [
-        {
-          $match: {
-            $expr: { $eq: ['$userId', { $oid: userId }] },
-            createdAt: { $gte: { $date: cutoffIso } },
-          },
-        },
+        { $match: { $expr: { $eq: ['$userId', { $oid: userId }] } } },
         {
           $group: {
             _id: {
