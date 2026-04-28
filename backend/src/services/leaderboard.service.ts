@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 
 export interface LeaderboardEntry {
@@ -120,7 +121,9 @@ function buildBasePipeline(limit?: number): unknown[] {
 export async function computeTop(limit: number | undefined = 20): Promise<LeaderboardEntry[]> {
   const effectiveLimit = limit === 0 ? undefined : limit;
   const pipeline = buildBasePipeline(effectiveLimit);
-  const rows = (await prisma.submission.aggregateRaw({ pipeline })) as unknown as RawLeaderboardRow[];
+  const rows = (await prisma.submission.aggregateRaw({
+    pipeline: pipeline as Prisma.InputJsonValue[],
+  })) as unknown as RawLeaderboardRow[];
   return rows.map((r) => ({
     userId: oidToString(r._id),
     name: r.name,

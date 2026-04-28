@@ -55,7 +55,7 @@ gracious-heyrovsky-cd1a66/
 
 - **Layered backend:** routes → controllers → services → Prisma. Cross-cutting concerns (auth, role, validate, error, rate-limit) live in dedicated middleware. Centralised error handler maps `ZodError`, `Prisma.PrismaClientKnownRequestError`, and `ApiError` to consistent JSON shape.
 - **Prisma + MongoDB:** typed Prisma Client for everything except aggregation pipelines, which use `prisma.<model>.aggregateRaw({ pipeline })` for the leaderboard, dashboard charts, and per-tag analytics. Embedded sub-documents (questions, answers) use Prisma **composite types**.
-- **Production-ready Express stack:** `helmet`, `cors`, `compression`, JSON limit, request-id, structured `pino` logging, role-aware rate limiting on `/auth` and `/ai`.
+- **Express stack:** `cors`, `compression`, JSON limit, request-id, structured `pino` logging, role-aware rate limiting on `/auth` and `/ai`.
 - **Socket.io with JWT handshake:** the leaderboard page subscribes to `leaderboard:updated` and refreshes in real time after any submission anywhere on the platform.
 - **AI integration is real, not decorative.** The AI service ([backend/src/services/ai.service.ts](backend/src/services/ai.service.ts)) calls OpenRouter's OpenAI-compatible chat-completions endpoint (`POST /api/v1/chat/completions`) via native `fetch` — no SDK lock-in. The model is configurable through `OPENROUTER_MODEL` (defaults to `openai/gpt-4o-mini`; works with any catalog model: `anthropic/claude-3.5-haiku`, `meta-llama/llama-3.1-70b-instruct`, etc.). Four pure functions:
   - `evaluateAnswer` — JSON-mode (`response_format: { type: 'json_object' }`) for short-answer grading; returns `{ score: 0-100, feedback }`. On failure marks the submission `PENDING` with friendly fallback text — never silently dropped.
@@ -123,7 +123,7 @@ cd frontend
 npm run dev
 ```
 
-- Health check: <http://localhost:4000/api/health>
+- API base: <http://localhost:4000/api>
 - App: <http://localhost:5174>
 
 The two ports are configurable: backend reads `PORT` from `backend/.env`, frontend reads `port` from [`vite.config.ts`](frontend/vite.config.ts). Whatever you choose, make sure the **frontend's `VITE_API_URL` / `VITE_SOCKET_URL`** and the **backend's `CLIENT_ORIGIN`** point at each other, or CORS will block requests.
@@ -159,8 +159,8 @@ The project is set up to deploy as **one GitHub repo** with two services pulling
    - `JWT_SECRET` — a strong random string (32+ chars)
    - `OPENROUTER_API_KEY` — from <https://openrouter.ai/keys>
    - `CLIENT_ORIGIN` — leave blank for now; you'll set it after the frontend is live (e.g. `https://praxis-mini-lms.vercel.app`)
-4. Render builds with `npm install && npx prisma generate && npm run build` and starts with `node dist/server.js`. Health check at `/api/health`.
-5. Once the service is healthy, copy its public URL (e.g. `https://praxis-mini-lms-api.onrender.com`) — you'll paste it into Vercel.
+4. Render builds with `npm install && npx prisma generate && npm run build` and starts with `node dist/server.js`.
+5. Once the service is live, copy its public URL (e.g. `https://praxis-mini-lms-api.onrender.com`) — you'll paste it into Vercel.
 
 ### Frontend on Vercel
 
@@ -307,7 +307,7 @@ Negative paths to validate:
 - Wrong password → toast error, no token saved.
 - Non-admin hits `/admin` → redirected by `<AdminRoute>`.
 - `curl http://localhost:4000/api/articles` (no token) → `401`.
-- Stop MongoDB → `/api/health` returns `503`; the frontend axios interceptor surfaces a toast on the next request.
+- Stop MongoDB → API requests fail with 5xx; the frontend axios interceptor surfaces a toast on the next request.
 
 ---
 
