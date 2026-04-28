@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ArticleListItem } from '@/types/api';
@@ -14,24 +13,61 @@ export function ArticleListPage(): JSX.Element {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
 
+  // Debounce the search input by 300ms.
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQ(searchInput.trim()), 300);
     return () => window.clearTimeout(id);
   }, [searchInput]);
 
-  const tagsQuery = useQuery({ queryKey: ['articles', 'tags'], queryFn: () => api.articles.tags() });
+  // ---- Tags list (loaded once on mount) ----
+  const [tags, setTags] = useState<Array<{ tag: string; count: number }>>([]);
+  const [tagsLoading, setTagsLoading] = useState(true);
 
-  const articlesQuery = useQuery({
-    queryKey: ['articles', { tag: activeTag, q: debouncedQ }],
-    queryFn: () =>
-      api.articles.list({
-        tag: activeTag ?? undefined,
-        q: debouncedQ || undefined,
-        limit: 30,
-      }),
-  });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setTagsLoading(true);
+        const result = await api.articles.tags();
+        if (alive) setTags(result);
+      } catch {
+        if (alive) setTags([]);
+      } finally {
+        if (alive) setTagsLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const items = useMemo(() => articlesQuery.data?.items ?? [], [articlesQuery.data]);
+  // ---- Articles list (re-runs when filter changes) ----
+  const [items, setItems] = useState<ArticleListItem[]>([]);
+  const [articlesLoading, setArticlesLoading] = useState(true);
+  const [articlesError, setArticlesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setArticlesLoading(true);
+        setArticlesError(null);
+        const result = await api.articles.list({
+          tag: activeTag ?? undefined,
+          q: debouncedQ || undefined,
+          limit: 30,
+        });
+        if (alive) setItems(result.items);
+      } catch (err) {
+        if (alive) setArticlesError((err as Error).message ?? 'Failed to load');
+      } finally {
+        if (alive) setArticlesLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [activeTag, debouncedQ]);
 
   return (
     <div className="space-y-6">
@@ -52,17 +88,17 @@ export function ArticleListPage(): JSX.Element {
         </div>
       </div>
 
-      {tagsQuery.isLoading ? (
+      {tagsLoading ? (
         <div className="flex gap-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-7 w-20 rounded-full" />
           ))}
         </div>
-      ) : tagsQuery.data && tagsQuery.data.length > 0 ? (
-        <TagFilter tags={tagsQuery.data} activeTag={activeTag} onSelect={setActiveTag} />
+      ) : tags.length > 0 ? (
+        <TagFilter tags={tags} activeTag={activeTag} onSelect={setActiveTag} />
       ) : null}
 
-      {articlesQuery.isLoading ? (
+      {articlesLoading ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="card p-5 space-y-3">
@@ -73,8 +109,8 @@ export function ArticleListPage(): JSX.Element {
             </div>
           ))}
         </div>
-      ) : articlesQuery.isError ? (
-        <EmptyState title="Couldn't load articles" description="Please try again later." />
+      ) : articlesError ? (
+        <EmptyState title="Couldn't load articles" description={articlesError} />
       ) : items.length === 0 ? (
         <EmptyState
           title="No articles match your filters"

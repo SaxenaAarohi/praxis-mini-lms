@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Eye, ArrowLeft } from 'lucide-react';
 import { api, extractError } from '@/lib/api';
+import type { Article, AssignmentPublic, Submission } from '@/types/api';
 import { MarkdownView } from '@/components/articles/MarkdownView';
 import { ReadingProgressBar } from '@/components/articles/ReadingProgressBar';
 import { SummaryButton } from '@/components/ai/SummaryButton';
@@ -19,68 +19,105 @@ import { dateLabel } from '@/lib/format';
 export function ArticleDetailPage(): JSX.Element {
   const { slug } = useParams<{ slug: string }>();
   const toast = useToast();
-  const qc = useQueryClient();
 
-  const articleQuery = useQuery({
-    queryKey: ['article', slug],
-    queryFn: () => api.articles.getBySlug(slug ?? ''),
-    enabled: Boolean(slug),
-  });
+  // ---- Article ----
+  const [article, setArticle] = useState<Article | null>(null);
+  const [articleLoading, setArticleLoading] = useState(true);
+  const [articleError, setArticleError] = useState<string | null>(null);
 
-  const article = articleQuery.data;
+  useEffect(() => {
+    if (!slug) return;
+    let alive = true;
+    (async () => {
+      try {
+        setArticleLoading(true);
+        const result = await api.articles.getBySlug(slug);
+        if (alive) {
+          setArticle(result);
+          setArticleError(null);
+        }
+      } catch (err) {
+        if (alive) setArticleError(extractError(err).message);
+      } finally {
+        if (alive) setArticleLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+
   const articleId = article?.id ?? null;
 
-  const assignmentQuery = useQuery({
-    queryKey: ['assignment', articleId],
-    queryFn: () => api.assignments.getForArticle(articleId ?? ''),
-    enabled: Boolean(articleId),
-  });
+  // ---- Assignment (loads after we have the article id) ----
+  const [assignment, setAssignment] = useState<AssignmentPublic | null>(null);
+  const [assignmentLoading, setAssignmentLoading] = useState(true);
 
-  const lastSubmissionQuery = useQuery({
-    queryKey: ['submission', 'latest', articleId],
-    queryFn: () => api.submissions.latestForArticle(articleId ?? ''),
-    enabled: Boolean(articleId),
-  });
+  useEffect(() => {
+    if (!articleId) return;
+    let alive = true;
+    (async () => {
+      try {
+        setAssignmentLoading(true);
+        const result = await api.assignments.getForArticle(articleId);
+        if (alive) setAssignment(result);
+      } catch {
+        if (alive) setAssignment(null);
+      } finally {
+        if (alive) setAssignmentLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [articleId]);
 
+  // ---- Latest existing submission (so we can show the past result) ----
+  const [resultData, setResultData] = useState<{
+    submission: Submission;
+    newBadges: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!articleId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const last = await api.submissions.latestForArticle(articleId);
+        if (alive && last) setResultData({ submission: last, newBadges: [] });
+      } catch {
+        // Ignore — no past submission is fine.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [articleId]);
+
+  // ---- Reading progress (custom hook, scroll-based + debounced persist) ----
   const { percent: readPercent, ref: contentRef } = useReadingProgress(
     articleId,
     article?.readingProgress ?? 0,
   );
 
-  const [resultData, setResultData] = useState<{
-    submission: import('@/types/api').Submission;
-    newBadges: string[];
-  } | null>(
-    () =>
-      lastSubmissionQuery.data
-        ? { submission: lastSubmissionQuery.data, newBadges: [] }
-        : null,
-  );
+  // ---- Submit handler ----
+  const [submitting, setSubmitting] = useState(false);
 
-  // Sync once when data loads
-  useMemo(() => {
-    if (lastSubmissionQuery.data && !resultData) {
-      setResultData({ submission: lastSubmissionQuery.data, newBadges: [] });
-    }
-  }, [lastSubmissionQuery.data, resultData]);
-
-  const submitMutation = useMutation({
-    mutationFn: async (answers: SubmittedAnswer[]) => {
-      if (!articleId) throw new Error('No article');
-      return api.submissions.create({ articleId, answers });
-    },
-    onSuccess: (result) => {
+  const handleSubmit = async (answers: SubmittedAnswer[]) => {
+    if (!articleId) return;
+    setSubmitting(true);
+    try {
+      const result = await api.submissions.create({ articleId, answers });
       setResultData({ submission: result.submission, newBadges: result.meta.newBadges });
       toast.success('Submitted!', `You scored ${result.submission.percentage.toFixed(1)}%.`);
-      qc.invalidateQueries({ queryKey: ['dashboard'] });
-      qc.invalidateQueries({ queryKey: ['leaderboard'] });
-    },
-    onError: (err) => {
+    } catch (err) {
       toast.error('Submission failed', extractError(err).message);
-    },
-  });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-  if (articleQuery.isLoading) {
+  if (articleLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-5 w-1/2" />
@@ -91,7 +128,7 @@ export function ArticleDetailPage(): JSX.Element {
       </div>
     );
   }
-  if (articleQuery.isError || !article) {
+  if (articleError || !article) {
     return <EmptyState title="Article not available" description="This article may have been removed." />;
   }
 
@@ -140,11 +177,11 @@ export function ArticleDetailPage(): JSX.Element {
           </p>
         </div>
 
-        {assignmentQuery.isLoading ? (
+        {assignmentLoading ? (
           <div className="card p-6 flex items-center justify-center">
             <Spinner />
           </div>
-        ) : !assignmentQuery.data ? (
+        ) : !assignment ? (
           <EmptyState
             title="No assignment yet"
             description="The author hasn't added practice questions for this article."
@@ -152,17 +189,15 @@ export function ArticleDetailPage(): JSX.Element {
         ) : resultData ? (
           <ResultPanel
             submission={resultData.submission}
-            assignment={assignmentQuery.data}
+            assignment={assignment}
             newBadges={resultData.newBadges}
             onRetry={() => setResultData(null)}
           />
         ) : (
           <AssignmentForm
-            assignment={assignmentQuery.data}
-            submitting={submitMutation.isPending}
-            onSubmit={async (answers) => {
-              await submitMutation.mutateAsync(answers);
-            }}
+            assignment={assignment}
+            submitting={submitting}
+            onSubmit={handleSubmit}
           />
         )}
       </section>

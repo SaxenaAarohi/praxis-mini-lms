@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Save, Trash2 } from 'lucide-react';
 import { api, extractError } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
@@ -55,47 +54,59 @@ function newDraft(type: 'MCQ' | 'SHORT', order: number): DraftQuestion {
 export function AdminAssignmentEditPage(): JSX.Element {
   const { articleId } = useParams<{ articleId: string }>();
   const toast = useToast();
-  const qc = useQueryClient();
   const [title, setTitle] = useState('Practice');
   const [passingScore, setPassingScore] = useState(60);
   const [draft, setDraft] = useState<DraftQuestion[]>([]);
 
-  const articleQuery = useQuery({
-    queryKey: ['admin', 'article-by-id', articleId],
-    queryFn: async () => {
-      const list = await api.articles.list({ limit: 200 });
-      return list.items.find((a: ArticleListItem) => a.id === articleId) ?? null;
-    },
-    enabled: Boolean(articleId),
-  });
-
-  const assignmentQuery = useQuery({
-    queryKey: ['admin', 'assignment-public', articleId],
-    queryFn: () => api.assignments.getForArticle(articleId ?? ''),
-    enabled: Boolean(articleId),
-  });
-
-  // Load existing assignment in admin mode if it exists
-  const adminAssignmentQuery = useQuery<AssignmentAdmin | null>({
-    queryKey: ['admin', 'assignment-admin', assignmentQuery.data?.id],
-    queryFn: () => api.assignments.getAdmin(assignmentQuery.data!.id),
-    enabled: Boolean(assignmentQuery.data?.id),
-  });
+  // ---- Load article + assignment chain ----
+  const [articleTitle, setArticleTitle] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (adminAssignmentQuery.data) {
-      setTitle(adminAssignmentQuery.data.title);
-      setPassingScore(adminAssignmentQuery.data.passingScore);
-      setDraft(adminAssignmentQuery.data.questions.map(fromAdminQuestion));
-    } else if (assignmentQuery.isFetched && !assignmentQuery.data) {
-      setTitle(`${articleQuery.data?.title ?? ''} – Practice`);
-      setDraft([]);
-    }
-  }, [adminAssignmentQuery.data, assignmentQuery.data, assignmentQuery.isFetched, articleQuery.data?.title]);
+    if (!articleId) return;
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!articleId) throw new Error('Missing article id');
+        // 1. Find the article (so we can show its title in the header).
+        const list = await api.articles.list({ limit: 200 });
+        const article: ArticleListItem | undefined = list.items.find((a) => a.id === articleId);
+        if (alive) setArticleTitle(article?.title ?? null);
+
+        // 2. Check if a learner-facing assignment already exists for this article.
+        const publicAssignment = await api.assignments.getForArticle(articleId);
+
+        if (publicAssignment?.id) {
+          // 3. Fetch the admin (full, with answer keys) version and hydrate the form.
+          const admin: AssignmentAdmin = await api.assignments.getAdmin(publicAssignment.id);
+          if (alive) {
+            setTitle(admin.title);
+            setPassingScore(admin.passingScore);
+            setDraft(admin.questions.map(fromAdminQuestion));
+          }
+        } else if (alive) {
+          // No assignment yet — pre-fill with a sensible default title.
+          setTitle(`${article?.title ?? ''} – Practice`);
+          setDraft([]);
+        }
+      } catch (err) {
+        toast.error('Could not load assignment', extractError(err).message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [articleId, toast]);
+
+  // ---- Save handler ----
+  const handleSave = async () => {
+    if (!articleId) return;
+    setSaving(true);
+    try {
       const questions = draft.map((q, idx) => {
         if (q.type === 'MCQ') {
           return {
@@ -119,28 +130,25 @@ export function AdminAssignmentEditPage(): JSX.Element {
           maxWords: q.maxWords ? Number(q.maxWords) : undefined,
         };
       });
-      return api.assignments.upsertForArticle(articleId, {
+      await api.assignments.upsertForArticle(articleId, {
         title: title.trim() || 'Practice',
         passingScore,
         questions,
       });
-    },
-    onSuccess: () => {
       toast.success('Assignment saved');
-      qc.invalidateQueries({ queryKey: ['admin'] });
-      qc.invalidateQueries({ queryKey: ['assignment'] });
-    },
-    onError: (err) => toast.error('Save failed', extractError(err).message),
-  });
-
-  const isLoading = articleQuery.isLoading || assignmentQuery.isLoading || adminAssignmentQuery.isLoading;
+    } catch (err) {
+      toast.error('Save failed', extractError(err).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const updateQ = (idx: number, patch: Partial<DraftQuestion>) =>
     setDraft((d) => d.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
 
   const removeQ = (idx: number) => setDraft((d) => d.filter((_, i) => i !== idx));
 
-  if (isLoading) {
+  if (loading) {
     return <Skeleton className="h-40 w-full" />;
   }
 
@@ -149,7 +157,7 @@ export function AdminAssignmentEditPage(): JSX.Element {
       <Link to="/admin/articles" className="text-sm text-slate-500 hover:text-brand-700 inline-flex items-center gap-1">
         <ArrowLeft className="w-4 h-4" /> Back to articles
       </Link>
-      <h2 className="text-xl font-bold">Assignment for: {articleQuery.data?.title ?? '—'}</h2>
+      <h2 className="text-xl font-bold">Assignment for: {articleTitle ?? '—'}</h2>
 
       <div className="card p-4 grid sm:grid-cols-2 gap-3">
         <Input label="Assignment title" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -289,9 +297,9 @@ export function AdminAssignmentEditPage(): JSX.Element {
       <div className="flex justify-end">
         <Button
           type="button"
-          loading={saveMutation.isPending}
+          loading={saving}
           disabled={draft.length === 0}
-          onClick={() => saveMutation.mutate()}
+          onClick={handleSave}
           icon={<Save className="w-4 h-4" />}
         >
           Save assignment

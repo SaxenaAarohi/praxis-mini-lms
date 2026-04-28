@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { AdminStats } from '@/types/api';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -6,12 +6,28 @@ import { Badge } from '@/components/ui/Badge';
 import { fromNow } from '@/lib/format';
 
 export function AdminUsersPage(): JSX.Element {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'users'],
-    queryFn: () => api.dashboard.admin(),
-  });
+  const [data, setData] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (isLoading) return <Skeleton className="h-40" />;
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const result = await api.dashboard.admin();
+        if (alive) setData(result);
+      } catch {
+        if (alive) setData(null);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (loading) return <Skeleton className="h-40" />;
   if (!data) return <p className="text-sm text-red-600">Could not load users.</p>;
 
   return (

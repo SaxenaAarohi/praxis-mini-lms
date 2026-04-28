@@ -1,5 +1,5 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   Award,
@@ -11,7 +11,8 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, extractError } from '@/lib/api';
+import type { DashboardData } from '@/types/api';
 import { useAuth } from '@/context/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -23,10 +24,30 @@ import { Badge } from '@/components/ui/Badge';
 export function DashboardPage(): JSX.Element {
   const { user } = useAuth();
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard', 'me'],
-    queryFn: () => api.dashboard.me(),
-  });
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const result = await api.dashboard.me();
+        if (alive) {
+          setData(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (alive) setError(extractError(err).message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -51,14 +72,16 @@ export function DashboardPage(): JSX.Element {
         </div>
       </div>
 
-      {isLoading ? (
+      {loading ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
-      ) : isError || !data ? (
-        <div className="card p-6 text-sm text-red-600">Could not load your dashboard data.</div>
+      ) : error || !data ? (
+        <div className="card p-6 text-sm text-red-600">
+          {error ?? 'Could not load your dashboard data.'}
+        </div>
       ) : (
         <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Award, Flame, Star, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
@@ -12,10 +12,26 @@ import { fromNow } from '@/lib/format';
 export function ProfilePage(): JSX.Element {
   const { user } = useAuth();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['profile', 'submissions'],
-    queryFn: () => api.submissions.listMine({ page: 1, limit: 20 }),
-  });
+  const [items, setItems] = useState<Submission[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const result = await api.submissions.listMine({ page: 1, limit: 20 });
+        if (alive) setItems(result.items);
+      } catch {
+        if (alive) setItems([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   if (!user) return <></>;
 
@@ -81,17 +97,17 @@ export function ProfilePage(): JSX.Element {
 
       <div className="card p-4">
         <h3 className="text-sm font-semibold mb-3">Submission history</h3>
-        {isLoading ? (
+        {loading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-10" />
             ))}
           </div>
-        ) : !data || data.items.length === 0 ? (
+        ) : items.length === 0 ? (
           <EmptyState title="No submissions yet" description="Read an article and try its practice assignment." />
         ) : (
           <ul className="divide-y divide-slate-100">
-            {data.items.map((s: Submission) => (
+            {items.map((s: Submission) => (
               <li key={s.id} className="py-3 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-sm font-semibold shrink-0">
                   {s.percentage.toFixed(0)}

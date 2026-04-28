@@ -1,59 +1,81 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, ClipboardList } from 'lucide-react';
 import { api, extractError } from '@/lib/api';
 import type { ArticleListItem } from '@/types/api';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/context/ToastContext';
-import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { dateLabel } from '@/lib/format';
 
 export function AdminArticlesPage(): JSX.Element {
-  const qc = useQueryClient();
   const toast = useToast();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'articles'],
-    queryFn: () => api.articles.list({ limit: 50 }),
-  });
+  // ---- Article list ----
+  const [items, setItems] = useState<ArticleListItem[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.articles.remove(id),
-    onSuccess: () => {
+  // Reusable loader so we can call it again after a delete.
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await api.articles.list({ limit: 50 });
+      setItems(result.items);
+      setTotal(result.total);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // ---- Delete handler ----
+  const handleDelete = async () => {
+    if (!confirmId) return;
+    setDeleting(true);
+    try {
+      await api.articles.remove(confirmId);
       toast.success('Article deleted');
-      qc.invalidateQueries({ queryKey: ['admin', 'articles'] });
-      qc.invalidateQueries({ queryKey: ['articles'] });
       setConfirmId(null);
-    },
-    onError: (err) => toast.error('Could not delete', extractError(err).message),
-  });
+      await load();
+    } catch (err) {
+      toast.error('Could not delete', extractError(err).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-600">
-          {data?.total ?? '—'} articles published
-        </p>
+        <p className="text-sm text-slate-600">{total ?? '—'} articles published</p>
         <Link to="/admin/articles/new" className="btn-primary">
           <Plus className="w-4 h-4" />
           New article
         </Link>
       </div>
 
-      {isLoading ? (
+      {loading ? (
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-14" />
+          ))}
         </div>
-      ) : !data || data.items.length === 0 ? (
-        <div className="card p-6 text-sm text-slate-600 text-center">No articles yet — create your first one.</div>
+      ) : items.length === 0 ? (
+        <div className="card p-6 text-sm text-slate-600 text-center">
+          No articles yet — create your first one.
+        </div>
       ) : (
         <div className="card overflow-hidden">
           <ul className="divide-y divide-slate-100">
-            {data.items.map((a: ArticleListItem) => (
+            {items.map((a: ArticleListItem) => (
               <li key={a.id} className="p-4 flex flex-col md:flex-row md:items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <Link to={`/articles/${a.slug}`} className="font-semibold hover:text-brand-700 truncate block">
@@ -98,8 +120,8 @@ export function AdminArticlesPage(): JSX.Element {
           <Button variant="secondary" onClick={() => setConfirmId(null)}>Cancel</Button>
           <Button
             variant="danger"
-            loading={deleteMutation.isPending}
-            onClick={() => confirmId && deleteMutation.mutate(confirmId)}
+            loading={deleting}
+            onClick={handleDelete}
           >
             Delete
           </Button>

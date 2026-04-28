@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Save, ClipboardList } from 'lucide-react';
 import { api, extractError } from '@/lib/api';
-import type { ArticleListItem } from '@/types/api';
+import type { Article, ArticleListItem } from '@/types/api';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Button } from '@/components/ui/Button';
@@ -30,35 +29,45 @@ export function AdminArticleEditPage(): JSX.Element {
   const isNew = !id;
   const navigate = useNavigate();
   const toast = useToast();
-  const qc = useQueryClient();
   const [preview, setPreview] = useState(false);
 
-  const articleQuery = useQuery({
-    queryKey: ['admin', 'article', id],
-    queryFn: async () => {
-      // We don't have a direct getById endpoint as an admin, but list returns enough by filtering;
-      // instead resolve from the list endpoint by id.
-      const res = await api.articles.list({ limit: 200 });
-      return res.items.find((x: ArticleListItem) => x.id === id) ?? null;
-    },
-    enabled: Boolean(id),
-  });
+  // ---- Loading existing article (when editing) ----
+  const [article, setArticle] = useState<Article | null>(null);
+  const [loading, setLoading] = useState(!isNew);
 
-  const fullArticleQuery = useQuery({
-    queryKey: ['admin', 'article-full', id],
-    queryFn: async () => {
-      const slug = articleQuery.data?.slug;
-      return slug ? api.articles.getBySlug(slug) : null;
-    },
-    enabled: Boolean(articleQuery.data?.slug),
-  });
+  useEffect(() => {
+    if (isNew || !id) return;
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        // No admin getById endpoint — use the list to find the slug, then fetch full article.
+        const list = await api.articles.list({ limit: 200 });
+        const stub: ArticleListItem | undefined = list.items.find((x) => x.id === id);
+        if (!stub || !alive) {
+          if (alive) setArticle(null);
+          return;
+        }
+        const full = await api.articles.getBySlug(stub.slug);
+        if (alive) setArticle(full);
+      } catch {
+        if (alive) setArticle(null);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [id, isNew]);
 
+  // ---- Form state ----
   const {
     register,
     handleSubmit,
     reset,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -71,21 +80,26 @@ export function AdminArticleEditPage(): JSX.Element {
     },
   });
 
+  // Hydrate form once we have the article
   useEffect(() => {
-    if (fullArticleQuery.data) {
+    if (article) {
       reset({
-        title: fullArticleQuery.data.title,
-        content: fullArticleQuery.data.content,
-        summary: fullArticleQuery.data.summary ?? '',
-        tagsText: fullArticleQuery.data.tags.join(', '),
-        coverImageUrl: fullArticleQuery.data.coverImageUrl ?? '',
-        published: fullArticleQuery.data.published,
+        title: article.title,
+        content: article.content,
+        summary: article.summary ?? '',
+        tagsText: article.tags.join(', '),
+        coverImageUrl: article.coverImageUrl ?? '',
+        published: article.published,
       });
     }
-  }, [fullArticleQuery.data, reset]);
+  }, [article, reset]);
 
-  const saveMutation = useMutation({
-    mutationFn: async (values: FormValues) => {
+  // ---- Save handler ----
+  const [saving, setSaving] = useState(false);
+
+  const onSubmit = async (values: FormValues) => {
+    setSaving(true);
+    try {
       const tags = values.tagsText
         .split(',')
         .map((t) => t.trim().toLowerCase())
@@ -98,21 +112,19 @@ export function AdminArticleEditPage(): JSX.Element {
         coverImageUrl: values.coverImageUrl || null,
         published: values.published,
       };
-      if (isNew) return api.articles.create(payload);
-      return api.articles.update(id!, payload);
-    },
-    onSuccess: (article) => {
+      const saved = isNew
+        ? await api.articles.create(payload)
+        : await api.articles.update(id!, payload);
       toast.success(isNew ? 'Article created' : 'Article saved');
-      qc.invalidateQueries({ queryKey: ['admin', 'articles'] });
-      qc.invalidateQueries({ queryKey: ['articles'] });
-      if (isNew) navigate(`/admin/articles/${article.id}/assignment`);
-    },
-    onError: (err) => toast.error('Save failed', extractError(err).message),
-  });
+      if (isNew) navigate(`/admin/articles/${saved.id}/assignment`);
+    } catch (err) {
+      toast.error('Save failed', extractError(err).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const isLoading = !isNew && (articleQuery.isLoading || fullArticleQuery.isLoading);
-
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-9 w-1/2" />
@@ -144,7 +156,7 @@ export function AdminArticleEditPage(): JSX.Element {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit((v) => saveMutation.mutate(v))} className="grid lg:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="grid lg:grid-cols-2 gap-4">
         <div className="space-y-3">
           <Input label="Title" placeholder="Closures in JavaScript" error={errors.title?.message} {...register('title')} />
           <Input
@@ -182,7 +194,7 @@ export function AdminArticleEditPage(): JSX.Element {
             Published
           </label>
           <div className="flex justify-end">
-            <Button type="submit" loading={isSubmitting || saveMutation.isPending} icon={<Save className="w-4 h-4" />}>
+            <Button type="submit" loading={saving} icon={<Save className="w-4 h-4" />}>
               {isNew ? 'Create article' : 'Save changes'}
             </Button>
           </div>

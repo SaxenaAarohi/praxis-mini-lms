@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Trophy, Wifi, WifiOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
@@ -6,16 +6,33 @@ import { LeaderboardTable } from '@/components/leaderboard/LeaderboardTable';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { api } from '@/lib/api';
+import type { RankInfo } from '@/types/api';
 import { cn } from '@/utils/cn';
 
 export function LeaderboardPage(): JSX.Element {
   const { user } = useAuth();
+
+  // Top-N list — refreshed in real time by the useLeaderboard hook
+  // (REST initial fetch + Socket.io live updates).
   const { data, loading, error, live } = useLeaderboard(20);
 
-  const rankQuery = useQuery({
-    queryKey: ['leaderboard', 'rank'],
-    queryFn: () => api.leaderboard.myRank(),
-  });
+  // Current user's rank — separate one-shot fetch on mount.
+  const [rank, setRank] = useState<RankInfo | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const result = await api.leaderboard.myRank();
+        if (alive) setRank(result);
+      } catch {
+        if (alive) setRank(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -39,17 +56,17 @@ export function LeaderboardPage(): JSX.Element {
           </p>
         </div>
 
-        {rankQuery.data?.rank && (
+        {rank?.rank && (
           <div className="card p-3 flex items-center gap-3">
             <Trophy className="w-5 h-5 text-amber-600" />
             <div className="text-sm">
               <div className="font-medium">
-                You're #{rankQuery.data.rank} of {rankQuery.data.total}
+                You're #{rank.rank} of {rank.total}
               </div>
-              {rankQuery.data.entry && (
+              {rank.entry && (
                 <div className="text-xs text-slate-500">
-                  {rankQuery.data.entry.compositeScore.toFixed(1)} composite ·{' '}
-                  {rankQuery.data.entry.avgScore.toFixed(1)}% avg
+                  {rank.entry.compositeScore.toFixed(1)} composite ·{' '}
+                  {rank.entry.avgScore.toFixed(1)}% avg
                 </div>
               )}
             </div>

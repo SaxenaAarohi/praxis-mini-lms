@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, FileText, ClipboardList, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -8,19 +8,39 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { fromNow } from '@/lib/format';
 
 export function AdminDashboardPage(): JSX.Element {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin', 'stats'],
-    queryFn: () => api.dashboard.admin(),
-  });
+  const [data, setData] = useState<AdminStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (isLoading) {
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const result = await api.dashboard.admin();
+        if (alive) {
+          setData(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (alive) setError((err as Error).message ?? 'Failed');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (loading) {
     return (
       <div className="grid sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
       </div>
     );
   }
-  if (isError || !data) return <p className="text-sm text-red-600">Could not load admin stats.</p>;
+  if (error || !data) return <p className="text-sm text-red-600">{error ?? 'Could not load admin stats.'}</p>;
 
   return (
     <div className="space-y-6">
