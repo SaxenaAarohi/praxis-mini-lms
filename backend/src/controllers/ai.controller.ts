@@ -5,7 +5,6 @@ import { ApiError } from '../utils/ApiError';
 import { AI_LIMITS, AI_PROMPTS } from '../utils/ai-prompts';
 import {
   callOpenRouter,
-  callOpenRouterStream,
   ChatMessage,
   clip,
   isAiEnabled,
@@ -142,54 +141,4 @@ export async function chat(req: Request, res: Response): Promise<void> {
     reply = 'The AI assistant is temporarily unavailable. Please try again shortly.';
   }
   res.json({ ok: true, data: { reply } });
-}
-
-export async function chatStream(req: Request, res: Response): Promise<void> {
-  const { messages } = req.body as {
-    messages: Array<{ role: 'user' | 'model'; content: string }>;
-  };
-
-  
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); 
-  res.flushHeaders();
-  res.write(': stream open\n\n');
-
-  let aborted = false;
-  req.on('close', () => {
-    aborted = true;
-  });
-
-  if (!isAiEnabled) {
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-    res.write(
-      `data: ${JSON.stringify({
-        delta: `(AI is offline in this environment.) Stub reply to: "${lastUser.slice(0, 80)}…"`,
-      })}\n\n`,
-    );
-    res.write('data: [DONE]\n\n');
-    res.end();
-    return;
-  }
-
-  try {
-    for await (const delta of callOpenRouterStream(buildChatPayload(messages), {
-      temperature: 0.7,
-      maxTokens: 800,
-    })) {
-      if (aborted) break;
-      res.write(`data: ${JSON.stringify({ delta })}\n\n`);
-    }
-    if (!aborted) res.write('data: [DONE]\n\n');
-  } catch (err) {
-    logger.error({ err }, 'chatStream failed');
-    if (!aborted) {
-      res.write(`data: ${JSON.stringify({ error: 'stream failed' })}\n\n`);
-    }
-  } finally {
-    res.end();
-  }
 }
